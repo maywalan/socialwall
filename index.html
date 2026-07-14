@@ -527,6 +527,17 @@
     console.error('Could not initialize Supabase client:', err);
   }
 
+  function logSbError(label, error){
+    if(!error) return;
+    console.error(
+      label + ' — ' + (error.message || 'no message') +
+      (error.details ? ' | details: ' + error.details : '') +
+      (error.hint ? ' | hint: ' + error.hint : '') +
+      (error.code ? ' | code: ' + error.code : '')
+    );
+  }
+
+
   const root = document.documentElement.style;
   const wall = document.getElementById('wall');
   const questionEl = document.getElementById('question');
@@ -860,7 +871,7 @@
     updateCounterDisplay();
     if(!sb) return;
     const { error } = await sb.from('comments').delete().eq('id', id);
-    if(error) console.error('Could not remove comment', error);
+    if(error) logSbError('Could not remove comment', error);
   }
 
   async function initComments(){
@@ -871,7 +882,7 @@
       .order('created_at', { ascending: true });
 
     if(error){
-      console.error('Could not load comments', error);
+      logSbError('Could not load comments', error);
       return;
     }
 
@@ -917,7 +928,7 @@
       .single();
 
     if(error){
-      console.error('Could not post comment', error);
+      logSbError('Could not post comment', error);
       spawnBubble(text); // fall back to a local-only bubble so the click still does something
       return;
     }
@@ -947,7 +958,7 @@
       .from('comments')
       .delete()
       .neq('id', '00000000-0000-0000-0000-000000000000'); // matches every real row
-    if(error) console.error('Could not clear comments', error);
+    if(error) logSbError('Could not clear comments', error);
   });
 
   // ---------- Theme templates (creator only, saved via persistent storage) ----------
