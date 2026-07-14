@@ -510,11 +510,22 @@
 </div>
 
 <script>
-  // ---------- Supabase ----------
-  const supabase = window.supabase.createClient(
-    "https://qxwiykvzzwporkbwldye.supabase.co",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4d2l5a3Z6endwb3JrYndsZHllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5OTM5NTQsImV4cCI6MjA5OTU2OTk1NH0.84BfOP2kgP0U48UA3rBX3zwMiBHkh3toDjlqYj3gXvY"
-  );
+  // ---------- Supabase (defensive: a failed/blocked CDN load must not crash the whole page) ----------
+  // Named "sb" (not "supabase") because the library itself declares a global called
+  // "supabase", which collides with a let/const of the same name.
+  let sb = null;
+  try{
+    if(window.supabase && typeof window.supabase.createClient === 'function'){
+      sb = window.supabase.createClient(
+        "https://qxwiykvzzwporkbwldye.supabase.co",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4d2l5a3Z6endwb3JrYndsZHllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5OTM5NTQsImV4cCI6MjA5OTU2OTk1NH0.84BfOP2kgP0U48UA3rBX3zwMiBHkh3toDjlqYj3gXvY"
+      );
+    } else {
+      console.error('Supabase library did not load — check the <script> tag / network, comments will not sync but the rest of the page will still work.');
+    }
+  }catch(err){
+    console.error('Could not initialize Supabase client:', err);
+  }
 
   const root = document.documentElement.style;
   const wall = document.getElementById('wall');
@@ -847,12 +858,14 @@
   async function removeCommentEverywhere(id){
     knownCommentIds.delete(id);
     updateCounterDisplay();
-    const { error } = await supabase.from('comments').delete().eq('id', id);
+    if(!sb) return;
+    const { error } = await sb.from('comments').delete().eq('id', id);
     if(error) console.error('Could not remove comment', error);
   }
 
   async function initComments(){
-    const { data, error } = await supabase
+    if(!sb) return;
+    const { data, error } = await sb
       .from('comments')
       .select('*')
       .order('created_at', { ascending: true });
@@ -868,17 +881,19 @@
   }
 
   // Realtime: other people's comments (and removals) show up without anyone refreshing
-  supabase
-    .channel('comments-wall')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, (payload) => {
-      if(!knownCommentIds.has(payload.new.id)){
-        spawnBubble(payload.new.text, payload.new.id);
-      }
-    })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'comments' }, (payload) => {
-      removeBubbleLocal(payload.old.id);
-    })
-    .subscribe();
+  if(sb){
+    sb
+      .channel('comments-wall')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, (payload) => {
+        if(!knownCommentIds.has(payload.new.id)){
+          spawnBubble(payload.new.text, payload.new.id);
+        }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'comments' }, (payload) => {
+        removeBubbleLocal(payload.old.id);
+      })
+      .subscribe();
+  }
 
   initComments();
 
@@ -889,7 +904,13 @@
     if(!text) return;
     input.value = '';
 
-    const { data, error } = await supabase
+    if(!sb){
+      // No backend connection — still let people comment locally so the wall isn't dead in the water
+      spawnBubble(text);
+      return;
+    }
+
+    const { data, error } = await sb
       .from('comments')
       .insert([{ text }])
       .select()
@@ -897,6 +918,7 @@
 
     if(error){
       console.error('Could not post comment', error);
+      spawnBubble(text); // fall back to a local-only bubble so the click still does something
       return;
     }
     spawnBubble(data.text, data.id);
@@ -920,7 +942,8 @@
     document.querySelectorAll('.bubble').forEach(el => el.remove());
     knownCommentIds.clear();
     updateCounterDisplay();
-    const { error } = await supabase
+    if(!sb) return;
+    const { error } = await sb
       .from('comments')
       .delete()
       .neq('id', '00000000-0000-0000-0000-000000000000'); // matches every real row
