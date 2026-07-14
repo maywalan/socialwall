@@ -882,8 +882,14 @@
     knownCommentIds.delete(id);
     updateCounterDisplay();
     if(!sb) return;
-    const { error } = await sb.from('comments').delete().eq('id', id);
-    if(error) logSbError('Could not remove comment', error);
+    const { data, error } = await sb.from('comments').delete().eq('id', id).select();
+    if(error){
+      logSbError('Could not remove comment', error);
+    } else if(!data || data.length === 0){
+      console.warn('0 rows were deleted for comment id ' + id + ' — the DELETE policy on comments is likely missing or not matching.');
+    } else {
+      console.log('Deleted comment ' + id + ' from the server.');
+    }
   }
 
   async function initComments(){
