@@ -386,7 +386,7 @@
 
     <div class="field creator-only">
       <label>QR link (what attendees scan to)</label>
-      <input type="text" id="input-url" value="https://event.link/join?role=commentor">
+      <input type="text" id="input-url" value="https://maywalan.github.io/socialwall/?role=commentor">
       <p style="font-size:11px; opacity:.55; line-height:1.5; margin-top:6px;">Keep <code>?role=commentor</code> on the end of whatever URL you host this page at — anyone who scans the QR or opens that link lands straight in commentor mode, with creator controls locked away.</p>
     </div>
 
@@ -613,7 +613,7 @@
 
   // ---------- QR code ----------
   let qr = new QRCode(document.getElementById('qrcode'), {
-    text: 'https://event.link/join?role=commentor',
+    text: 'https://maywalan.github.io/socialwall/?role=commentor',
     width: 80,
     height: 80,
     colorDark: '#1a1a1a',
@@ -623,7 +623,7 @@
   document.getElementById('input-url').addEventListener('input', (e) => {
     document.getElementById('qrcode').innerHTML = '';
     qr = new QRCode(document.getElementById('qrcode'), {
-      text: e.target.value || 'https://event.link/join?role=commentor',
+      text: e.target.value || 'https://maywalan.github.io/socialwall/?role=commentor',
       width: 80,
       height: 80,
       colorDark: '#1a1a1a',
@@ -659,7 +659,7 @@
   }
 
   shareBtn.addEventListener('click', async () => {
-    const url = document.getElementById('input-url').value || 'https://event.link/join';
+    const url = document.getElementById('input-url').value || 'https://maywalan.github.io/socialwall/?role=commentor';
     const shareData = {
       title: 'Join the live Q&A',
       text: questionEl.textContent,
