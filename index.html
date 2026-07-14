@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Live Q&A Wall</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
@@ -33,7 +34,7 @@
 
   #stage{
     position:relative;
-    width:100%; height:100vh;
+    width:100%; height:100vh; height:100dvh;
     background:
       radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 45%),
       radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 40%),
@@ -157,14 +158,6 @@
     100%{ transform:translateY(-118vh) translateX(calc(-50% + var(--drift) * 1.6)) rotate(calc(var(--rot) * 1.4)); opacity:0; }
   }
 
-  @keyframes gentle-float{
-    0%{ transform:translate(0,0) rotate(0deg); }
-    25%{ transform:translate(6px,-9px) rotate(1deg); }
-    50%{ transform:translate(-5px,-16px) rotate(-1deg); }
-    75%{ transform:translate(-8px,-6px) rotate(1deg); }
-    100%{ transform:translate(0,0) rotate(0deg); }
-  }
-
   /* ---------- QR panel ---------- */
   #qr-panel{
     position:absolute; bottom:104px; right:32px;
@@ -280,6 +273,14 @@
     font-family:'Prompt',sans-serif; font-size:13px;
   }
   .btn-row button.danger{ background:#7a2b26; color:#fff; }
+
+  #clear-box{ border-top:1px solid rgba(255,255,255,.08); padding-top:20px; }
+  .danger-full{
+    width:100%; padding:11px; border:none; border-radius:8px;
+    background:#7a2b26; color:#fff; font-weight:600; cursor:pointer;
+    font-family:'Prompt',sans-serif; font-size:13px;
+  }
+  .danger-full:hover{ background:#8f342d; }
   #template-status{
     min-height:16px; font-size:12px; color:#8fd0ec; margin:10px 0 0 0;
   }
@@ -355,36 +356,30 @@
   }
   @media (max-width: 640px){
     #header{
-      padding:20px 16px 14px 16px;
-      gap:10px;
+      padding:64px 16px 12px 16px;
+      gap:8px;
     }
-    #question{ max-width:100%; }
-    #eyebrow{ font-size:11px; }
+    #question{ max-width:100%; font-size:clamp(20px, 6.5vw, var(--question-size)); }
+    #eyebrow{ font-size:10px; }
     #counter{ font-size:11px; }
 
-    #gear{ top:18px; right:16px; width:40px; height:40px; font-size:16px; }
+    #gear{ top:14px; right:14px; width:38px; height:38px; font-size:15px; border-radius:10px; }
 
-    #qr-panel{
-      bottom:96px; right:16px;
-      padding:10px 14px; gap:10px;
-      border-radius:16px;
-    }
-    #qr-ring{ width:60px; height:60px; padding:6px; }
-    #qr-text .title{ font-size:12px; }
-    #qr-text .sub{ font-size:10px; }
+    /* Scanning a QR on the phone you're already holding doesn't make sense — hide it on mobile */
+    #qr-panel{ display:none; }
 
     #share-btn{
-      bottom:96px; left:16px;
-      padding:11px 16px; font-size:13px;
+      position:absolute; top:14px; left:14px; bottom:auto;
+      padding:9px 14px; font-size:12px; border-radius:10px; gap:6px;
     }
 
     #panel{ width:100%; }
 
     #comment-bar{
-      padding:10px 14px calc(10px + env(safe-area-inset-bottom, 0px)) 14px;
+      padding:10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) 12px;
       gap:8px;
     }
-    #comment-input{ font-size:14px; padding:11px 16px; }
+    #comment-input{ font-size:16px; padding:11px 16px; }
     #comment-submit{ width:42px; height:42px; font-size:16px; }
   }
 
@@ -501,6 +496,12 @@
       <p>Saves background, font colors, question size, and bubble styling. Templates are shared with anyone using this wall.</p>
     </div>
 
+    <div id="clear-box" class="field creator-only">
+      <label>Danger zone</label>
+      <button id="clear-comments-btn" class="danger-full">Clear all comments</button>
+      <p style="font-size:11px; opacity:.55; line-height:1.5; margin-top:8px;">Removes every comment from the wall, for everyone. You'll be asked to confirm first.</p>
+    </div>
+
     <div id="demo-add">
       <p>Comments are posted from the bar at the bottom of the screen now — no need to open this panel to join in.</p>
     </div>
@@ -514,6 +515,11 @@
   const countEl = document.getElementById('count');
 
   let count = 0;
+  const knownCommentIds = new Set();
+
+  function genCommentId(){
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
 
   // ---------- Lane system so bubbles don't overlap as they spawn from the bottom ----------
   const LANE_COUNT = 7;
@@ -577,10 +583,12 @@
 
   window.addEventListener('resize', refreshAllBubbleSizing);
 
-  function spawnBubble(text){
+  function spawnBubble(text, id){
+    id = id || genCommentId();
     const b = document.createElement('div');
     b.className = 'bubble';
     b.dataset.text = text;
+    b.dataset.id = id;
     b.dataset.words = text.trim().split(/\s+/).filter(Boolean).length || 1;
 
     const tag = document.createElement('span');
@@ -597,6 +605,7 @@
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       b.remove();
+      removeCommentEverywhere(id);
     });
     b.appendChild(tag);
     b.appendChild(body);
@@ -621,12 +630,16 @@
     makeDraggable(b);
 
     wall.appendChild(b);
-    count++;
-    countEl.textContent = count;
-    if(count === 1){
-      document.getElementById('counter-suffix').textContent = '';
-    }
+    knownCommentIds.add(id);
+    updateCounterDisplay();
 
+    return id;
+  }
+
+  function updateCounterDisplay(){
+    count = document.querySelectorAll('.bubble').length;
+    countEl.textContent = count;
+    document.getElementById('counter-suffix').textContent = count === 0 ? '— waiting for the first one' : '';
   }
 
   // ---------- Creator drag-and-drop ----------
@@ -669,8 +682,16 @@
       if(!dragging) return;
       dragging = false;
       b.classList.remove('dragging');
-      const floatDuration = (6 + Math.random() * 4).toFixed(1);
-      b.style.animation = `gentle-float ${floatDuration}s ease-in-out infinite`;
+      const duration = 32 + Math.random() * 18;
+      const drift = (Math.random() * 60 - 30).toFixed(0) + 'px';
+      const rot = (Math.random() * 8 - 4).toFixed(1) + 'deg';
+      b.style.setProperty('--drift', drift);
+      b.style.setProperty('--rot', rot);
+      b.style.animationName = 'rise';
+      b.style.animationTimingFunction = 'linear';
+      b.style.animationIterationCount = 'infinite';
+      b.style.animationDuration = duration + 's';
+      b.style.animationDelay = '0s';
     }
 
     b.addEventListener('mousedown', (e) => { start(e.clientX, e.clientY); e.preventDefault(); });
@@ -808,14 +829,64 @@
 
   updateBubbleSizeLabel();
 
+  // ---------- Shared comment storage (keeps the wall in sync across everyone's screens) ----------
+  async function loadSharedComments(){
+    try{
+      const res = await window.storage.get('wall-comments', true);
+      return res ? JSON.parse(res.value) : [];
+    }catch(err){
+      return [];
+    }
+  }
+
+  async function saveSharedComments(list){
+    try{
+      await window.storage.set('wall-comments', JSON.stringify(list), true);
+    }catch(err){
+      console.error('Could not save comments', err);
+    }
+  }
+
+  async function removeCommentEverywhere(id){
+    knownCommentIds.delete(id);
+    updateCounterDisplay();
+    try{
+      const list = await loadSharedComments();
+      await saveSharedComments(list.filter(c => c.id !== id));
+    }catch(err){
+      console.error('Could not remove comment', err);
+    }
+  }
+
+  async function syncSharedComments(){
+    const list = await loadSharedComments();
+    list.forEach(c => {
+      if(!knownCommentIds.has(c.id)){
+        spawnBubble(c.text, c.id);
+      }
+    });
+  }
+
+  async function initComments(){
+    const list = await loadSharedComments();
+    list.forEach((c, i) => {
+      setTimeout(() => spawnBubble(c.text, c.id), i * 350);
+    });
+    setInterval(syncSharedComments, 3000);
+  }
+
+  initComments();
+
   // ---------- Bottom comment bar ----------
-  function submitComment(){
+  async function submitComment(){
     const input = document.getElementById('comment-input');
     const text = input.value.trim();
-    if(text){
-      spawnBubble(text);
-      input.value = '';
-    }
+    if(!text) return;
+    input.value = '';
+    const id = spawnBubble(text);
+    const list = await loadSharedComments();
+    list.push({ id, text, ts: Date.now() });
+    await saveSharedComments(list);
   }
   document.getElementById('comment-submit').addEventListener('click', submitComment);
   document.getElementById('comment-input').addEventListener('keydown', (e) => {
@@ -827,6 +898,16 @@
 
   document.getElementById('input-comment-placeholder').addEventListener('input', (e) => {
     document.getElementById('comment-input').placeholder = e.target.value || 'Comment something...';
+  });
+
+  // ---------- Clear all comments (creator only, with confirmation) ----------
+  document.getElementById('clear-comments-btn').addEventListener('click', async () => {
+    const ok = confirm('Clear all comments from the wall for everyone? This cannot be undone.');
+    if(!ok) return;
+    document.querySelectorAll('.bubble').forEach(el => el.remove());
+    knownCommentIds.clear();
+    updateCounterDisplay();
+    await saveSharedComments([]);
   });
 
   // ---------- Theme templates (creator only, saved via persistent storage) ----------
