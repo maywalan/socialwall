@@ -671,6 +671,15 @@
     document.getElementById('counter-suffix').textContent = count === 0 ? '— waiting for the first one' : '';
   }
 
+  let pendingInitSpawns = [];
+  function wipeWallLocally(){
+    pendingInitSpawns.forEach(t => clearTimeout(t));
+    pendingInitSpawns = [];
+    document.querySelectorAll('.bubble').forEach(el => el.remove());
+    knownCommentIds.clear();
+    updateCounterDisplay();
+  }
+
   // ---------- Creator drag-and-drop ----------
   function makeDraggable(b){
     let dragging = false;
@@ -890,7 +899,8 @@
     }
 
     data.forEach((c, i) => {
-      setTimeout(() => spawnBubble(c.text, c.id), i * 350);
+      const t = setTimeout(() => spawnBubble(c.text, c.id), i * 350);
+      pendingInitSpawns.push(t);
     });
   }
 
@@ -912,9 +922,11 @@
   initComments();
 
   // ---------- Shared question text (Supabase-synced so everyone sees the same question) ----------
+  let lastClearedAt = null;
+
   async function loadQuestionFromServer(){
     if(!sb) return;
-    const { data, error } = await sb.from('settings').select('question').eq('id', 1).single();
+    const { data, error } = await sb.from('settings').select('question, cleared_at').eq('id', 1).single();
     if(error){
       logSbError('Could not load question', error);
       return;
@@ -922,6 +934,9 @@
     if(data && data.question){
       questionEl.textContent = data.question;
       document.getElementById('input-question').value = data.question;
+    }
+    if(data){
+      lastClearedAt = data.cleared_at || null;
     }
   }
 
@@ -934,6 +949,17 @@
     if(error) logSbError('Could not save question', error);
   }
 
+  async function broadcastClearToEveryone(){
+    if(!sb) return;
+    const newClearedAt = new Date().toISOString();
+    lastClearedAt = newClearedAt; // so our own realtime echo doesn't re-trigger a wipe
+    const { error } = await sb
+      .from('settings')
+      .update({ cleared_at: newClearedAt })
+      .eq('id', 1);
+    if(error) logSbError('Could not broadcast clear', error);
+  }
+
   if(sb){
     sb
       .channel('settings-wall')
@@ -941,6 +967,10 @@
         if(payload.new && typeof payload.new.question === 'string'){
           questionEl.textContent = payload.new.question;
           document.getElementById('input-question').value = payload.new.question;
+        }
+        if(payload.new && payload.new.cleared_at && payload.new.cleared_at !== lastClearedAt){
+          lastClearedAt = payload.new.cleared_at;
+          wipeWallLocally();
         }
       })
       .subscribe();
@@ -990,15 +1020,22 @@
   document.getElementById('clear-comments-btn').addEventListener('click', async () => {
     const ok = confirm('Clear all comments from the wall for everyone? This cannot be undone.');
     if(!ok) return;
-    document.querySelectorAll('.bubble').forEach(el => el.remove());
-    knownCommentIds.clear();
-    updateCounterDisplay();
+    wipeWallLocally();
     if(!sb) return;
-    const { error } = await sb
+    const { data, error } = await sb
       .from('comments')
       .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // matches every real row
-    if(error) logSbError('Could not clear comments', error);
+      .neq('id', '00000000-0000-0000-0000-000000000000') // matches every real row
+      .select();
+    if(error){
+      logSbError('Could not clear comments', error);
+    } else {
+      console.log('Cleared ' + (data ? data.length : 0) + ' comment(s) from the server.');
+      if(!data || data.length === 0){
+        console.warn('0 rows were deleted — this usually means the DELETE policy on the comments table is missing or not matching. Check pg_policies for the delete policy.');
+      }
+    }
+    await broadcastClearToEveryone();
   });
 
   // ---------- Theme templates (creator only, saved via persistent storage) ----------
