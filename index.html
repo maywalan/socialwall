@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Live Q&A Wall</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
 
@@ -509,6 +510,12 @@
 </div>
 
 <script>
+  // ---------- Supabase ----------
+  const supabase = window.supabase.createClient(
+    "https://qxwiykvzzwporkbwldye.supabase.co",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4d2l5a3Z6endwb3JrYndsZHllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5OTM5NTQsImV4cCI6MjA5OTU2OTk1NH0.84BfOP2kgP0U48UA3rBX3zwMiBHkh3toDjlqYj3gXvY"
+  );
+
   const root = document.documentElement.style;
   const wall = document.getElementById('wall');
   const questionEl = document.getElementById('question');
@@ -829,51 +836,49 @@
 
   updateBubbleSizeLabel();
 
-  // ---------- Shared comment storage (keeps the wall in sync across everyone's screens) ----------
-  async function loadSharedComments(){
-    try{
-      const res = await window.storage.get('wall-comments', true);
-      return res ? JSON.parse(res.value) : [];
-    }catch(err){
-      return [];
-    }
-  }
-
-  async function saveSharedComments(list){
-    try{
-      await window.storage.set('wall-comments', JSON.stringify(list), true);
-    }catch(err){
-      console.error('Could not save comments', err);
-    }
+  // ---------- Shared comment storage (Supabase — real backend, synced across everyone's screens) ----------
+  function removeBubbleLocal(id){
+    const el = document.querySelector('.bubble[data-id="' + id + '"]');
+    if(el) el.remove();
+    knownCommentIds.delete(id);
+    updateCounterDisplay();
   }
 
   async function removeCommentEverywhere(id){
     knownCommentIds.delete(id);
     updateCounterDisplay();
-    try{
-      const list = await loadSharedComments();
-      await saveSharedComments(list.filter(c => c.id !== id));
-    }catch(err){
-      console.error('Could not remove comment', err);
-    }
-  }
-
-  async function syncSharedComments(){
-    const list = await loadSharedComments();
-    list.forEach(c => {
-      if(!knownCommentIds.has(c.id)){
-        spawnBubble(c.text, c.id);
-      }
-    });
+    const { error } = await supabase.from('comments').delete().eq('id', id);
+    if(error) console.error('Could not remove comment', error);
   }
 
   async function initComments(){
-    const list = await loadSharedComments();
-    list.forEach((c, i) => {
+    const { data, error } = await supabase
+      .from('comments')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if(error){
+      console.error('Could not load comments', error);
+      return;
+    }
+
+    data.forEach((c, i) => {
       setTimeout(() => spawnBubble(c.text, c.id), i * 350);
     });
-    setInterval(syncSharedComments, 3000);
   }
+
+  // Realtime: other people's comments (and removals) show up without anyone refreshing
+  supabase
+    .channel('comments-wall')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, (payload) => {
+      if(!knownCommentIds.has(payload.new.id)){
+        spawnBubble(payload.new.text, payload.new.id);
+      }
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'comments' }, (payload) => {
+      removeBubbleLocal(payload.old.id);
+    })
+    .subscribe();
 
   initComments();
 
@@ -883,10 +888,18 @@
     const text = input.value.trim();
     if(!text) return;
     input.value = '';
-    const id = spawnBubble(text);
-    const list = await loadSharedComments();
-    list.push({ id, text, ts: Date.now() });
-    await saveSharedComments(list);
+
+    const { data, error } = await supabase
+      .from('comments')
+      .insert([{ text }])
+      .select()
+      .single();
+
+    if(error){
+      console.error('Could not post comment', error);
+      return;
+    }
+    spawnBubble(data.text, data.id);
   }
   document.getElementById('comment-submit').addEventListener('click', submitComment);
   document.getElementById('comment-input').addEventListener('keydown', (e) => {
@@ -907,7 +920,11 @@
     document.querySelectorAll('.bubble').forEach(el => el.remove());
     knownCommentIds.clear();
     updateCounterDisplay();
-    await saveSharedComments([]);
+    const { error } = await supabase
+      .from('comments')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // matches every real row
+    if(error) console.error('Could not clear comments', error);
   });
 
   // ---------- Theme templates (creator only, saved via persistent storage) ----------
