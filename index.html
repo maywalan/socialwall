@@ -386,7 +386,8 @@
 
     <div class="field creator-only">
       <label>QR link (what attendees scan to)</label>
-      <input type="text" id="input-url" value="https://event.link/join">
+      <input type="text" id="input-url" value="https://event.link/join?role=commentor">
+      <p style="font-size:11px; opacity:.55; line-height:1.5; margin-top:6px;">Keep <code>?role=commentor</code> on the end of whatever URL you host this page at — anyone who scans the QR or opens that link lands straight in commentor mode, with creator controls locked away.</p>
     </div>
 
     <div class="field">
@@ -612,7 +613,7 @@
 
   // ---------- QR code ----------
   let qr = new QRCode(document.getElementById('qrcode'), {
-    text: 'https://event.link/join',
+    text: 'https://event.link/join?role=commentor',
     width: 80,
     height: 80,
     colorDark: '#1a1a1a',
@@ -622,7 +623,7 @@
   document.getElementById('input-url').addEventListener('input', (e) => {
     document.getElementById('qrcode').innerHTML = '';
     qr = new QRCode(document.getElementById('qrcode'), {
-      text: e.target.value || 'https://event.link/join',
+      text: e.target.value || 'https://event.link/join?role=commentor',
       width: 80,
       height: 80,
       colorDark: '#1a1a1a',
@@ -647,7 +648,15 @@
   }
 
   roleSelect.addEventListener('change', (e) => applyRole(e.target.value));
-  applyRole(roleSelect.value);
+
+  // Auto-lock into commentor mode if opened via a link/QR with ?role=commentor
+  const urlRole = new URLSearchParams(window.location.search).get('role');
+  const initialRole = urlRole === 'commentor' ? 'commentor' : roleSelect.value;
+  roleSelect.value = initialRole;
+  applyRole(initialRole);
+  if(urlRole === 'commentor'){
+    document.getElementById('role-field').classList.add('hidden'); // no switching back via the UI
+  }
 
   shareBtn.addEventListener('click', async () => {
     const url = document.getElementById('input-url').value || 'https://event.link/join';
