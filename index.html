@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Live Q&A Wall</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+
+  :root{
+    --bg-color: #FFFFFF;
+    --bg-color-2: #FFFFFF;
+    --font-color: rgba(0,0,0,0.9);
+    --question-color: rgba(0,0,0,0.9);
+    --question-size: 44px;
+    --accent: #2898cb;
+    --accent-2: #2898cb;
+    --card: #ffffffb3;
+    --bubble-bg: #2898cb14;
+    --bubble-font-size: 15px;
+    --bubble-scale: 14;
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    margin:0; padding:0; height:100%; overflow:hidden;
+    font-family:'Prompt',sans-serif;
+    background:var(--bg-color);
+    color:var(--font-color);
+    transition:background .4s ease, color .4s ease;
+  }
+
+  #stage{
+    position:relative;
+    width:100%; height:100vh;
+    background:
+      radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 45%),
+      radial-gradient(circle at 85% 85%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 40%),
+      var(--bg-color);
+  }
+
+  /* ---------- Header ---------- */
+  #header{
+    position:absolute; top:0; left:0; right:0;
+    padding:36px 48px 24px 48px;
+    display:flex; flex-direction:column; gap:14px;
+    z-index:20;
+    pointer-events:none;
+  }
+
+  #eyebrow{
+    display:flex; align-items:center; gap:10px;
+    font-family:'Prompt',sans-serif;
+    font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--font-color); opacity:.7;
+  }
+
+  .live-dot{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--accent-2);
+    box-shadow:0 0 0 0 color-mix(in srgb, var(--accent-2) 60%, transparent);
+    animation:pulse-dot 1.8s ease-out infinite;
+  }
+  @keyframes pulse-dot{
+    0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--accent-2) 55%, transparent); }
+    70%{ box-shadow:0 0 0 12px color-mix(in srgb, var(--accent-2) 0%, transparent); }
+    100%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--accent-2) 0%, transparent); }
+  }
+
+  #question{
+    font-family:'Prompt',sans-serif;
+    font-weight:700;
+    font-size:var(--question-size);
+    line-height:1.15;
+    max-width:78%;
+    color:var(--question-color);
+    text-wrap:balance;
+    transition:color .3s ease, font-size .2s ease;
+  }
+
+  #counter{
+    font-family:'Prompt',sans-serif;
+    font-size:13px; opacity:.6; letter-spacing:.04em;
+  }
+
+  /* ---------- Comment wall ---------- */
+  #wall{
+    position:absolute; inset:0;
+    overflow:hidden;
+  }
+
+  .bubble{
+    position:absolute;
+    bottom:-140px;
+    max-width:calc(var(--bubble-font-size) * var(--bubble-scale));
+    padding:0.9em 1.2em;
+    border-radius:1em;
+    background:var(--bubble-bg);
+    border:1px solid color-mix(in srgb, var(--font-color) 12%, transparent);
+    backdrop-filter:blur(6px);
+    color:var(--font-color);
+    font-size:var(--bubble-font-size);
+    line-height:1.4;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);
+    animation-name:rise;
+    animation-timing-function:linear;
+    animation-iteration-count:infinite;
+    transition:background .3s ease, font-size .2s ease, max-width .2s ease;
+  }
+
+  body.role-creator .bubble{
+    cursor:grab;
+  }
+  .bubble.dragging{
+    cursor:grabbing;
+    animation:none !important;
+    z-index:15;
+    transition:none;
+  }
+
+  .bubble .remove-btn{
+    display:none;
+    position:absolute;
+    top:-10px; right:-10px;
+    width:24px; height:24px;
+    border-radius:50%;
+    background:var(--accent-2);
+    color:#fff;
+    border:none;
+    font-size:14px;
+    line-height:1;
+    align-items:center; justify-content:center;
+    cursor:pointer;
+    box-shadow:0 4px 10px rgba(0,0,0,.35);
+  }
+
+  body.role-creator .bubble .remove-btn{
+    display:flex;
+  }
+
+  .bubble .tag{
+    display:block;
+    font-family:'Prompt',sans-serif;
+    font-size:0.65em;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    opacity:.55;
+    margin-bottom:0.35em;
+  }
+
+  @keyframes rise{
+    0%{ transform:translateY(0) translateX(-50%) rotate(0deg); opacity:0; }
+    6%{ opacity:1; }
+    50%{ transform:translateY(-58vh) translateX(calc(-50% + var(--drift))) rotate(var(--rot)); }
+    94%{ opacity:1; }
+    100%{ transform:translateY(-118vh) translateX(calc(-50% + var(--drift) * 1.6)) rotate(calc(var(--rot) * 1.4)); opacity:0; }
+  }
+
+  @keyframes gentle-float{
+    0%{ transform:translate(0,0) rotate(0deg); }
+    25%{ transform:translate(6px,-9px) rotate(1deg); }
+    50%{ transform:translate(-5px,-16px) rotate(-1deg); }
+    75%{ transform:translate(-8px,-6px) rotate(1deg); }
+    100%{ transform:translate(0,0) rotate(0deg); }
+  }
+
+  /* ---------- QR panel ---------- */
+  #qr-panel{
+    position:absolute; bottom:32px; right:32px;
+    display:flex; align-items:center; gap:16px;
+    padding:16px 20px;
+    border-radius:20px;
+    background:var(--card);
+    border:1px solid color-mix(in srgb, var(--font-color) 14%, transparent);
+    backdrop-filter:blur(8px);
+    z-index:20;
+  }
+
+  #qr-ring{
+    position:relative;
+    width:96px; height:96px;
+    border-radius:14px;
+    background:#fff;
+    padding:8px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #qr-ring::after{
+    content:'';
+    position:absolute; inset:-6px;
+    border-radius:18px;
+    border:2px solid var(--accent);
+    animation:ring-pulse 2.2s ease-in-out infinite;
+  }
+  @keyframes ring-pulse{
+    0%,100%{ opacity:.35; transform:scale(1); }
+    50%{ opacity:.9; transform:scale(1.04); }
+  }
+
+  #qr-text{ font-family:'Prompt',sans-serif; }
+  #qr-text .title{ font-weight:600; font-size:14px; color:var(--font-color); }
+  #qr-text .sub{ font-size:12px; opacity:.6; color:var(--font-color); margin-top:2px; }
+
+  /* ---------- Settings ---------- */
+  #gear{
+    position:absolute; top:28px; right:32px; z-index:30;
+    width:44px; height:44px; border-radius:12px;
+    background:var(--card); border:1px solid color-mix(in srgb, var(--font-color) 14%, transparent);
+    color:var(--font-color);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:18px;
+    backdrop-filter:blur(8px);
+  }
+
+  #panel{
+    position:absolute; top:0; right:0; height:100%;
+    width:320px;
+    background:#0E1018;
+    border-left:1px solid rgba(255,255,255,.08);
+    z-index:40;
+    padding:28px 24px;
+    transform:translateX(100%);
+    transition:transform .35s ease;
+    overflow-y:auto;
+    font-family:'Prompt',sans-serif;
+    color:#F5F1EA;
+  }
+  #panel.open{ transform:translateX(0); }
+
+  #panel h3{
+    font-family:'Prompt',sans-serif;
+    margin:0 0 20px 0; font-size:20px;
+  }
+
+  .field{ margin-bottom:20px; }
+  .field label{
+    display:block; font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+    opacity:.6; margin-bottom:8px; font-family:'Prompt',sans-serif;
+  }
+  .field input[type="color"]{
+    width:100%; height:40px; border:none; border-radius:8px; background:none; cursor:pointer;
+  }
+  .field input[type="range"]{ width:100%; }
+  .field textarea, .field input[type="text"]{
+    width:100%; padding:10px 12px; border-radius:8px;
+    background:#1B1E2B; border:1px solid rgba(255,255,255,.1);
+    color:#F5F1EA; font-family:'Prompt',sans-serif; font-size:14px; resize:vertical;
+  }
+  .size-val{ font-family:'Prompt',sans-serif; font-size:12px; opacity:.7; margin-left:6px; }
+
+  #demo-add{
+    margin-top:8px; padding-top:20px; border-top:1px solid rgba(255,255,255,.08);
+  }
+  #demo-add button{
+    width:100%; padding:10px; border:none; border-radius:8px;
+    background:var(--accent); color:#fff; font-weight:600; cursor:pointer;
+    font-family:'Prompt',sans-serif;
+  }
+  #demo-add p{ font-size:11px; opacity:.5; line-height:1.5; margin-top:10px; }
+
+  #template-box{
+    margin-bottom:20px; padding-top:20px; padding-bottom:20px;
+    border-top:1px solid rgba(255,255,255,.08);
+    border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  #template-box input[type="text"], #template-box select{
+    width:100%; padding:10px 12px; border-radius:8px;
+    background:#1B1E2B; border:1px solid rgba(255,255,255,.1);
+    color:#F5F1EA; font-family:'Prompt',sans-serif; font-size:14px;
+  }
+  #template-box #save-template-btn{
+    width:100%; padding:10px; border:none; border-radius:8px;
+    background:var(--accent); color:#fff; font-weight:600; cursor:pointer;
+    font-family:'Prompt',sans-serif; font-size:13px;
+  }
+  .btn-row{ display:flex; gap:8px; margin-top:8px; }
+  .btn-row button{
+    flex:1; padding:10px; border:none; border-radius:8px;
+    background:#2c3040; color:#F5F1EA; font-weight:600; cursor:pointer;
+    font-family:'Prompt',sans-serif; font-size:13px;
+  }
+  .btn-row button.danger{ background:#7a2b26; color:#fff; }
+  #template-status{
+    min-height:16px; font-size:12px; color:#8fd0ec; margin:10px 0 0 0;
+  }
+  #template-box > p:last-child{ font-size:11px; opacity:.5; line-height:1.5; margin-top:6px; }
+
+  #role-field select{
+    width:100%; padding:10px 12px; border-radius:8px;
+    background:#1B1E2B; border:1px solid rgba(255,255,255,.1);
+    color:#F5F1EA; font-family:'Prompt',sans-serif; font-size:14px;
+  }
+
+  #role-note{
+    font-size:12px; opacity:.55; line-height:1.5;
+    margin:-10px 0 22px 0;
+  }
+
+  #share-btn{
+    position:absolute; bottom:32px; left:32px; z-index:20;
+    display:flex; align-items:center; gap:8px;
+    padding:14px 20px;
+    border-radius:16px;
+    background:var(--accent);
+    border:none;
+    color:#fff;
+    font-family:'Prompt',sans-serif;
+    font-weight:600; font-size:14px;
+    cursor:pointer;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);
+    transition:transform .15s ease, background .2s ease;
+  }
+  #share-btn:hover{ transform:translateY(-2px); }
+  #share-btn:active{ transform:translateY(0); }
+  #share-btn.commentor-only.hidden{ display:none; }
+
+  .creator-only.hidden{ display:none; }
+
+  #close-panel{
+    position:absolute; top:24px; right:20px; background:none; border:none;
+    color:#F5F1EA; opacity:.5; font-size:18px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="header">
+    <div id="eyebrow"><span class="live-dot"></span>Live wall</div>
+    <div id="question">What's one word to describe today's session?</div>
+    <div id="counter"><span id="count">0</span> responses so far <span id="counter-suffix">— waiting for the first one</span></div>
+  </div>
+
+  <div id="wall"></div>
+
+  <div id="qr-panel">
+    <div id="qr-ring"><div id="qrcode"></div></div>
+    <div id="qr-text">
+      <div class="title">Scan to join</div>
+      <div class="sub">Answer live from your phone</div>
+    </div>
+  </div>
+
+  <button id="share-btn" class="commentor-only hidden">↗ Share</button>
+
+  <button id="gear" title="Customize">⚙</button>
+
+  <div id="panel">
+    <button id="close-panel">✕</button>
+    <h3>Customize</h3>
+
+    <div class="field" id="role-field">
+      <label>Viewing as</label>
+      <select id="input-role">
+        <option value="creator">Creator — full access</option>
+        <option value="commentor">Commentor — comment only</option>
+      </select>
+    </div>
+
+    <p id="role-note"></p>
+
+    <div class="field creator-only">
+      <label>Question</label>
+      <textarea id="input-question" rows="3">What's one word to describe today's session?</textarea>
+    </div>
+
+    <div class="field creator-only">
+      <label>Background color</label>
+      <input type="color" id="input-bg" value="#ffffff">
+    </div>
+
+    <div class="field creator-only">
+      <label>Font color</label>
+      <input type="color" id="input-font-color" value="#1a1a1a">
+    </div>
+
+    <div class="field creator-only">
+      <label>Question font size <span class="size-val" id="size-val">44px</span></label>
+      <input type="range" id="input-size" min="24" max="500" value="44">
+    </div>
+
+    <div class="field creator-only">
+      <label>Question color</label>
+      <input type="color" id="input-question-color" value="#1a1a1a">
+    </div>
+
+    <div class="field creator-only">
+      <label>QR link (what attendees scan to)</label>
+      <input type="text" id="input-url" value="https://event.link/join">
+    </div>
+
+    <div class="field">
+      <label>Comment bubble color</label>
+      <input type="color" id="input-bubble-color" value="#eaf5fa">
+    </div>
+
+    <div class="field">
+      <label>Comment font size <span class="size-val" id="bubble-font-val">15px</span></label>
+      <input type="range" id="input-bubble-font" min="11" max="500" value="15">
+    </div>
+
+    <div class="field">
+      <label>Comment bubble size <span class="size-val" id="bubble-size-val">14× font (≈210px)</span></label>
+      <input type="range" id="input-bubble-size" min="4" max="26" step="0.5" value="14">
+    </div>
+
+    <div id="template-box" class="creator-only">
+      <label style="display:block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6;margin-bottom:8px;font-family:'Prompt',sans-serif;">Theme templates</label>
+
+      <input type="text" id="template-name" placeholder="Template name (e.g. FlowAccount)">
+      <button id="save-template-btn" style="margin-top:8px;">Save current theme</button>
+
+      <select id="template-select" style="margin-top:16px;">
+        <option value="">— choose a saved template —</option>
+      </select>
+      <div class="btn-row">
+        <button id="apply-template-btn">Apply</button>
+        <button id="delete-template-btn" class="danger">Delete</button>
+      </div>
+
+      <p id="template-status"></p>
+      <p>Saves background, font colors, question size, and bubble styling. Templates are shared with anyone using this wall.</p>
+    </div>
+
+    <div id="demo-add">
+      <label style="display:block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6;margin-bottom:8px;font-family:'Prompt',sans-serif;">Post a comment</label>
+      <textarea id="demo-text" rows="2" placeholder="Type a comment to drop onto the wall…"></textarea>
+      <button id="demo-btn" style="margin-top:10px;">Post to wall</button>
+      <p>Stands in for the form attendees would fill out after scanning the QR code.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const root = document.documentElement.style;
+  const wall = document.getElementById('wall');
+  const questionEl = document.getElementById('question');
+  const countEl = document.getElementById('count');
+
+  let count = 0;
+
+  // ---------- Lane system so bubbles don't overlap as they spawn from the bottom ----------
+  const LANE_COUNT = 7;
+  let laneCursor = 0;
+  const laneLastUse = new Array(LANE_COUNT).fill(-Infinity);
+
+  function pickLane(durationSec){
+    const now = performance.now();
+    const cooldown = durationSec * 1000 * 0.3; // lane stays "reserved" while a bubble is near the bottom
+    for(let i = 0; i < LANE_COUNT; i++){
+      const lane = (laneCursor + i) % LANE_COUNT;
+      if(now - laneLastUse[lane] >= cooldown){
+        laneLastUse[lane] = now;
+        laneCursor = (lane + 1) % LANE_COUNT;
+        return lane;
+      }
+    }
+    // all lanes busy — fall back to the least-recently-used one
+    let best = 0, bestAge = -Infinity;
+    for(let i = 0; i < LANE_COUNT; i++){
+      const age = now - laneLastUse[i];
+      if(age > bestAge){ bestAge = age; best = i; }
+    }
+    laneLastUse[best] = now;
+    laneCursor = (best + 1) % LANE_COUNT;
+    return best;
+  }
+
+  // ---------- Font size scales down as comment length grows ----------
+  function fontSizeForText(text, basePx){
+    const words = text.trim().split(/\s+/).filter(Boolean).length || 1;
+    let factor;
+    if(words <= 3) factor = 1.5;
+    else if(words <= 6) factor = 1.2;
+    else if(words <= 10) factor = 1.0;
+    else if(words <= 16) factor = 0.85;
+    else factor = 0.7;
+    return Math.max(10, Math.round(basePx * factor));
+  }
+
+  function currentBaseFontPx(){
+    return parseFloat(document.getElementById('input-bubble-font').value) || 15;
+  }
+
+  function currentScale(){
+    return parseFloat(document.getElementById('input-bubble-size').value) || 14;
+  }
+
+  function applyBubbleSizing(b){
+    const basePx = currentBaseFontPx();
+    const words = parseInt(b.dataset.words, 10) || 1;
+    const fontPx = fontSizeForText(b.dataset.text, basePx);
+    b.style.fontSize = fontPx + 'px';
+    b.style.maxWidth = Math.round(fontPx * currentScale()) + 'px';
+  }
+
+  function refreshAllBubbleSizing(){
+    document.querySelectorAll('.bubble').forEach(applyBubbleSizing);
+  }
+
+  function spawnBubble(text){
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    b.dataset.text = text;
+    b.dataset.words = text.trim().split(/\s+/).filter(Boolean).length || 1;
+
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = 'Attendee · just now';
+    const body = document.createElement('div');
+    body.textContent = text;
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.textContent = '×';
+    removeBtn.title = 'Remove comment';
+    removeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    removeBtn.addEventListener('touchstart', (e) => e.stopPropagation());
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      b.remove();
+    });
+    b.appendChild(tag);
+    b.appendChild(body);
+    b.appendChild(removeBtn);
+
+    applyBubbleSizing(b);
+
+    const duration = 32 + Math.random() * 18;
+    const lane = pickLane(duration);
+    const laneWidthPct = 100 / LANE_COUNT;
+    const leftPct = (lane + 0.5) * laneWidthPct + (Math.random() * 4 - 2);
+    const drift = (Math.random() * 60 - 30).toFixed(0) + 'px';
+    const rot = (Math.random() * 8 - 4).toFixed(1) + 'deg';
+    const delay = -(Math.random() * duration).toFixed(2); // negative delay = starts mid-loop, avoids stacked spawns
+
+    b.style.left = leftPct + '%';
+    b.style.setProperty('--drift', drift);
+    b.style.setProperty('--rot', rot);
+    b.style.animationDuration = duration + 's';
+    b.style.animationDelay = delay + 's';
+
+    makeDraggable(b);
+
+    wall.appendChild(b);
+    count++;
+    countEl.textContent = count;
+    if(count === 1){
+      document.getElementById('counter-suffix').textContent = '';
+    }
+
+  }
+
+  // ---------- Creator drag-and-drop ----------
+  function makeDraggable(b){
+    let dragging = false;
+    let offsetX = 0, offsetY = 0;
+
+    function isCreator(){
+      return document.body.classList.contains('role-creator');
+    }
+
+    function start(clientX, clientY){
+      if(!isCreator()) return;
+      const wallRect = wall.getBoundingClientRect();
+      const bRect = b.getBoundingClientRect();
+      // freeze the bubble at its current on-screen spot and detach it from the looping animation
+      b.style.left = (bRect.left - wallRect.left) + 'px';
+      b.style.top = (bRect.top - wallRect.top) + 'px';
+      b.style.bottom = 'auto';
+      b.style.transform = 'none';
+      b.style.animation = 'none';
+      b.classList.add('dragging');
+      dragging = true;
+      offsetX = clientX - bRect.left;
+      offsetY = clientY - bRect.top;
+    }
+
+    function move(clientX, clientY){
+      if(!dragging) return;
+      const wallRect = wall.getBoundingClientRect();
+      let x = clientX - wallRect.left - offsetX;
+      let y = clientY - wallRect.top - offsetY;
+      x = Math.max(-40, Math.min(wallRect.width - 40, x));
+      y = Math.max(-40, Math.min(wallRect.height - 40, y));
+      b.style.left = x + 'px';
+      b.style.top = y + 'px';
+    }
+
+    function end(){
+      if(!dragging) return;
+      dragging = false;
+      b.classList.remove('dragging');
+      const floatDuration = (6 + Math.random() * 4).toFixed(1);
+      b.style.animation = `gentle-float ${floatDuration}s ease-in-out infinite`;
+    }
+
+    b.addEventListener('mousedown', (e) => { start(e.clientX, e.clientY); e.preventDefault(); });
+    window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
+    window.addEventListener('mouseup', end);
+
+    b.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      start(t.clientX, t.clientY);
+    }, { passive:true });
+    window.addEventListener('touchmove', (e) => {
+      if(!dragging) return;
+      const t = e.touches[0];
+      move(t.clientX, t.clientY);
+    }, { passive:true });
+    window.addEventListener('touchend', end);
+  }
+
+  // ---------- QR code ----------
+  let qr = new QRCode(document.getElementById('qrcode'), {
+    text: 'https://event.link/join',
+    width: 80,
+    height: 80,
+    colorDark: '#1a1a1a',
+    colorLight: '#ffffff'
+  });
+
+  document.getElementById('input-url').addEventListener('input', (e) => {
+    document.getElementById('qrcode').innerHTML = '';
+    qr = new QRCode(document.getElementById('qrcode'), {
+      text: e.target.value || 'https://event.link/join',
+      width: 80,
+      height: 80,
+      colorDark: '#1a1a1a',
+      colorLight: '#ffffff'
+    });
+  });
+
+  // ---------- Roles / permissions ----------
+  const roleSelect = document.getElementById('input-role');
+  const roleNote = document.getElementById('role-note');
+  const creatorFields = document.querySelectorAll('.creator-only');
+  const shareBtn = document.getElementById('share-btn');
+
+  function applyRole(role){
+    const isCreator = role === 'creator';
+    creatorFields.forEach(f => f.classList.toggle('hidden', !isCreator));
+    shareBtn.classList.toggle('hidden', isCreator);
+    document.body.classList.toggle('role-creator', isCreator);
+    roleNote.textContent = isCreator
+      ? 'Full access: edit the question, theme, and QR link, plus bubble styling, and remove comments.'
+      : 'Commentors can post comments, adjust bubble color, size, and font size, and share the event link.';
+  }
+
+  roleSelect.addEventListener('change', (e) => applyRole(e.target.value));
+  applyRole(roleSelect.value);
+
+  shareBtn.addEventListener('click', async () => {
+    const url = document.getElementById('input-url').value || 'https://event.link/join';
+    const shareData = {
+      title: 'Join the live Q&A',
+      text: questionEl.textContent,
+      url
+    };
+    if(navigator.share){
+      try{ await navigator.share(shareData); }catch(err){ /* user cancelled, ignore */ }
+    } else {
+      try{
+        await navigator.clipboard.writeText(url);
+        const original = shareBtn.textContent;
+        shareBtn.textContent = 'Link copied!';
+        setTimeout(() => { shareBtn.textContent = original; }, 1800);
+      }catch(err){
+        alert('Share link: ' + url);
+      }
+    }
+  });
+
+  // ---------- Settings panel ----------
+  const panel = document.getElementById('panel');
+  document.getElementById('gear').addEventListener('click', () => panel.classList.add('open'));
+  document.getElementById('close-panel').addEventListener('click', () => panel.classList.remove('open'));
+
+  document.getElementById('input-question').addEventListener('input', (e) => {
+    questionEl.textContent = e.target.value;
+  });
+
+  document.getElementById('input-bg').addEventListener('input', (e) => {
+    root.setProperty('--bg-color', e.target.value);
+  });
+
+  document.getElementById('input-font-color').addEventListener('input', (e) => {
+    root.setProperty('--font-color', e.target.value);
+  });
+
+  document.getElementById('input-size').addEventListener('input', (e) => {
+    root.setProperty('--question-size', e.target.value + 'px');
+    document.getElementById('size-val').textContent = e.target.value + 'px';
+  });
+
+  document.getElementById('input-question-color').addEventListener('input', (e) => {
+    root.setProperty('--question-color', e.target.value);
+  });
+
+  document.getElementById('input-bubble-color').addEventListener('input', (e) => {
+    root.setProperty('--bubble-bg', e.target.value);
+  });
+
+  function updateBubbleSizeLabel(){
+    const fontPx = parseFloat(document.getElementById('input-bubble-font').value);
+    const scale = parseFloat(document.getElementById('input-bubble-size').value);
+    const approxPx = Math.round(fontPx * scale);
+    document.getElementById('bubble-size-val').textContent = scale + '× font (≈' + approxPx + 'px base)';
+  }
+
+  document.getElementById('input-bubble-font').addEventListener('input', (e) => {
+    document.getElementById('bubble-font-val').textContent = e.target.value + 'px';
+    updateBubbleSizeLabel();
+    refreshAllBubbleSizing();
+  });
+
+  document.getElementById('input-bubble-size').addEventListener('input', () => {
+    updateBubbleSizeLabel();
+    refreshAllBubbleSizing();
+  });
+
+  updateBubbleSizeLabel();
+
+  document.getElementById('demo-btn').addEventListener('click', () => {
+    const ta = document.getElementById('demo-text');
+    const text = ta.value.trim();
+    if(text){
+      spawnBubble(text);
+      ta.value = '';
+    }
+  });
+  document.getElementById('demo-text').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      document.getElementById('demo-btn').click();
+    }
+  });
+
+  // ---------- Theme templates (creator only, saved via persistent storage) ----------
+  const THEME_FIELD_IDS = [
+    'input-bg', 'input-font-color', 'input-size',
+    'input-question-color', 'input-bubble-color',
+    'input-bubble-font', 'input-bubble-size'
+  ];
+
+  function escapeHtml(str){
+    return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function showTemplateStatus(msg){
+    const el = document.getElementById('template-status');
+    el.textContent = msg;
+    setTimeout(() => { if(el.textContent === msg) el.textContent = ''; }, 3500);
+  }
+
+  function collectThemeValues(){
+    const data = {};
+    THEME_FIELD_IDS.forEach(id => { data[id] = document.getElementById(id).value; });
+    return data;
+  }
+
+  function applyThemeValues(data){
+    THEME_FIELD_IDS.forEach(id => {
+      if(data[id] === undefined) return;
+      const el = document.getElementById(id);
+      el.value = data[id];
+      el.dispatchEvent(new Event('input'));
+    });
+  }
+
+  async function getTemplateNames(){
+    try{
+      const res = await window.storage.get('theme-templates-index', true);
+      return res ? JSON.parse(res.value) : [];
+    }catch(err){
+      return [];
+    }
+  }
+
+  async function setTemplateNames(names){
+    try{
+      await window.storage.set('theme-templates-index', JSON.stringify(names), true);
+    }catch(err){
+      console.error('Could not save template index', err);
+    }
+  }
+
+  async function refreshTemplateDropdown(selectName){
+    const names = await getTemplateNames();
+    const sel = document.getElementById('template-select');
+    sel.innerHTML = '<option value="">— choose a saved template —</option>' +
+      names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+    if(selectName && names.includes(selectName)) sel.value = selectName;
+  }
+
+  document.getElementById('save-template-btn').addEventListener('click', async () => {
+    const nameInput = document.getElementById('template-name');
+    const name = nameInput.value.trim();
+    if(!name){ showTemplateStatus('Enter a template name first.'); return; }
+    const data = collectThemeValues();
+    try{
+      await window.storage.set('theme-template:' + name, JSON.stringify(data), true);
+      const names = await getTemplateNames();
+      if(!names.includes(name)){
+        names.push(name);
+        await setTemplateNames(names);
+      }
+      await refreshTemplateDropdown(name);
+      showTemplateStatus('Saved "' + name + '".');
+    }catch(err){
+      showTemplateStatus('Could not save — try again.');
+    }
+  });
+
+  document.getElementById('apply-template-btn').addEventListener('click', async () => {
+    const name = document.getElementById('template-select').value;
+    if(!name){ showTemplateStatus('Choose a template to apply.'); return; }
+    try{
+      const res = await window.storage.get('theme-template:' + name, true);
+      const data = JSON.parse(res.value);
+      applyThemeValues(data);
+      showTemplateStatus('Applied "' + name + '".');
+    }catch(err){
+      showTemplateStatus('Could not load that template.');
+    }
+  });
+
+  document.getElementById('delete-template-btn').addEventListener('click', async () => {
+    const name = document.getElementById('template-select').value;
+    if(!name){ showTemplateStatus('Choose a template to delete.'); return; }
+    try{
+      await window.storage.delete('theme-template:' + name, true);
+      const names = (await getTemplateNames()).filter(n => n !== name);
+      await setTemplateNames(names);
+      await refreshTemplateDropdown();
+      showTemplateStatus('Deleted "' + name + '".');
+    }catch(err){
+      showTemplateStatus('Could not delete — try again.');
+    }
+  });
+
+  refreshTemplateDropdown();
+</script>
+
+</body>
+</html>
