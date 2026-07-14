@@ -813,8 +813,11 @@
   document.getElementById('gear').addEventListener('click', () => panel.classList.add('open'));
   document.getElementById('close-panel').addEventListener('click', () => panel.classList.remove('open'));
 
+  let questionSaveTimer = null;
   document.getElementById('input-question').addEventListener('input', (e) => {
     questionEl.textContent = e.target.value;
+    clearTimeout(questionSaveTimer);
+    questionSaveTimer = setTimeout(() => saveQuestionToServer(e.target.value), 500);
   });
 
   document.getElementById('input-bg').addEventListener('input', (e) => {
@@ -907,6 +910,43 @@
   }
 
   initComments();
+
+  // ---------- Shared question text (Supabase-synced so everyone sees the same question) ----------
+  async function loadQuestionFromServer(){
+    if(!sb) return;
+    const { data, error } = await sb.from('settings').select('question').eq('id', 1).single();
+    if(error){
+      logSbError('Could not load question', error);
+      return;
+    }
+    if(data && data.question){
+      questionEl.textContent = data.question;
+      document.getElementById('input-question').value = data.question;
+    }
+  }
+
+  async function saveQuestionToServer(text){
+    if(!sb) return;
+    const { error } = await sb
+      .from('settings')
+      .update({ question: text, updated_at: new Date().toISOString() })
+      .eq('id', 1);
+    if(error) logSbError('Could not save question', error);
+  }
+
+  if(sb){
+    sb
+      .channel('settings-wall')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings' }, (payload) => {
+        if(payload.new && typeof payload.new.question === 'string'){
+          questionEl.textContent = payload.new.question;
+          document.getElementById('input-question').value = payload.new.question;
+        }
+      })
+      .subscribe();
+  }
+
+  loadQuestionFromServer();
 
   // ---------- Bottom comment bar ----------
   async function submitComment(){
