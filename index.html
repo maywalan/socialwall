@@ -71,7 +71,7 @@
   #question{
     font-family:'Prompt',sans-serif;
     font-weight:700;
-    font-size:var(--question-size);
+    font-size:clamp(22px, 7vw, var(--question-size));
     line-height:1.15;
     max-width:78%;
     color:var(--question-color);
@@ -167,7 +167,7 @@
 
   /* ---------- QR panel ---------- */
   #qr-panel{
-    position:absolute; bottom:32px; right:32px;
+    position:absolute; bottom:104px; right:32px;
     display:flex; align-items:center; gap:16px;
     padding:16px 20px;
     border-radius:20px;
@@ -297,7 +297,7 @@
   }
 
   #share-btn{
-    position:absolute; bottom:32px; left:32px; z-index:20;
+    position:absolute; bottom:104px; left:32px; z-index:20;
     display:flex; align-items:center; gap:8px;
     padding:14px 20px;
     border-radius:16px;
@@ -316,10 +316,78 @@
 
   .creator-only.hidden{ display:none; }
 
+  #comment-bar{
+    position:absolute; left:0; right:0; bottom:0; z-index:25;
+    display:flex; align-items:center; gap:10px;
+    padding:14px 20px calc(14px + env(safe-area-inset-bottom, 0px)) 20px;
+    background:#ffffff;
+    border-top:1px solid rgba(0,0,0,.08);
+    box-shadow:0 -6px 20px rgba(0,0,0,.05);
+  }
+  #comment-input{
+    flex:1;
+    padding:13px 18px;
+    border-radius:999px;
+    border:1px solid rgba(0,0,0,.12);
+    background:#f4f5f7;
+    color:#1a1a1a;
+    font-family:'Prompt',sans-serif;
+    font-size:15px;
+    outline:none;
+  }
+  #comment-input::placeholder{ color:#9a9a9a; }
+  #comment-input:focus{ border-color:var(--accent); }
+  #comment-submit{
+    width:46px; height:46px; flex-shrink:0;
+    border-radius:50%; border:none;
+    background:var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; cursor:pointer;
+    transition:transform .12s ease;
+  }
+  #comment-submit:hover{ transform:scale(1.06); }
+  #comment-submit:active{ transform:scale(0.95); }
+
+
   #close-panel{
     position:absolute; top:24px; right:20px; background:none; border:none;
     color:#F5F1EA; opacity:.5; font-size:18px; cursor:pointer;
   }
+  @media (max-width: 640px){
+    #header{
+      padding:20px 16px 14px 16px;
+      gap:10px;
+    }
+    #question{ max-width:100%; }
+    #eyebrow{ font-size:11px; }
+    #counter{ font-size:11px; }
+
+    #gear{ top:18px; right:16px; width:40px; height:40px; font-size:16px; }
+
+    #qr-panel{
+      bottom:96px; right:16px;
+      padding:10px 14px; gap:10px;
+      border-radius:16px;
+    }
+    #qr-ring{ width:60px; height:60px; padding:6px; }
+    #qr-text .title{ font-size:12px; }
+    #qr-text .sub{ font-size:10px; }
+
+    #share-btn{
+      bottom:96px; left:16px;
+      padding:11px 16px; font-size:13px;
+    }
+
+    #panel{ width:100%; }
+
+    #comment-bar{
+      padding:10px 14px calc(10px + env(safe-area-inset-bottom, 0px)) 14px;
+      gap:8px;
+    }
+    #comment-input{ font-size:14px; padding:11px 16px; }
+    #comment-submit{ width:42px; height:42px; font-size:16px; }
+  }
+
 </style>
 </head>
 <body>
@@ -342,6 +410,11 @@
   </div>
 
   <button id="share-btn" class="commentor-only hidden">↗ Share</button>
+
+  <div id="comment-bar">
+    <input type="text" id="comment-input" placeholder="Comment something...">
+    <button id="comment-submit" aria-label="Post comment">➤</button>
+  </div>
 
   <button id="gear" title="Customize">⚙</button>
 
@@ -390,6 +463,11 @@
       <p style="font-size:11px; opacity:.55; line-height:1.5; margin-top:6px;">Keep <code>?role=commentor</code> on the end of whatever URL you host this page at — anyone who scans the QR or opens that link lands straight in commentor mode, with creator controls locked away.</p>
     </div>
 
+    <div class="field creator-only">
+      <label>Comment bar placeholder text</label>
+      <input type="text" id="input-comment-placeholder" value="Comment something...">
+    </div>
+
     <div class="field">
       <label>Comment bubble color</label>
       <input type="color" id="input-bubble-color" value="#eaf5fa">
@@ -424,10 +502,7 @@
     </div>
 
     <div id="demo-add">
-      <label style="display:block;font-size:12px;text-transform:uppercase;letter-spacing:.08em;opacity:.6;margin-bottom:8px;font-family:'Prompt',sans-serif;">Post a comment</label>
-      <textarea id="demo-text" rows="2" placeholder="Type a comment to drop onto the wall…"></textarea>
-      <button id="demo-btn" style="margin-top:10px;">Post to wall</button>
-      <p>Stands in for the form attendees would fill out after scanning the QR code.</p>
+      <p>Comments are posted from the bar at the bottom of the screen now — no need to open this panel to join in.</p>
     </div>
   </div>
 </div>
@@ -489,15 +564,18 @@
 
   function applyBubbleSizing(b){
     const basePx = currentBaseFontPx();
-    const words = parseInt(b.dataset.words, 10) || 1;
     const fontPx = fontSizeForText(b.dataset.text, basePx);
-    b.style.fontSize = fontPx + 'px';
-    b.style.maxWidth = Math.round(fontPx * currentScale()) + 'px';
+    const cappedFontPx = Math.min(fontPx, window.innerWidth * 0.16);
+    const maxWidthPx = Math.min(Math.round(cappedFontPx * currentScale()), window.innerWidth * 0.86);
+    b.style.fontSize = Math.round(cappedFontPx) + 'px';
+    b.style.maxWidth = Math.round(maxWidthPx) + 'px';
   }
 
   function refreshAllBubbleSizing(){
     document.querySelectorAll('.bubble').forEach(applyBubbleSizing);
   }
+
+  window.addEventListener('resize', refreshAllBubbleSizing);
 
   function spawnBubble(text){
     const b = document.createElement('div');
@@ -656,6 +734,7 @@
   applyRole(initialRole);
   if(urlRole === 'commentor'){
     document.getElementById('role-field').classList.add('hidden'); // no switching back via the UI
+    roleSelect.disabled = true; // belt-and-suspenders: the control itself is inert
   }
 
   shareBtn.addEventListener('click', async () => {
@@ -729,19 +808,25 @@
 
   updateBubbleSizeLabel();
 
-  document.getElementById('demo-btn').addEventListener('click', () => {
-    const ta = document.getElementById('demo-text');
-    const text = ta.value.trim();
+  // ---------- Bottom comment bar ----------
+  function submitComment(){
+    const input = document.getElementById('comment-input');
+    const text = input.value.trim();
     if(text){
       spawnBubble(text);
-      ta.value = '';
+      input.value = '';
+    }
+  }
+  document.getElementById('comment-submit').addEventListener('click', submitComment);
+  document.getElementById('comment-input').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      submitComment();
     }
   });
-  document.getElementById('demo-text').addEventListener('keydown', (e) => {
-    if(e.key === 'Enter' && !e.shiftKey){
-      e.preventDefault();
-      document.getElementById('demo-btn').click();
-    }
+
+  document.getElementById('input-comment-placeholder').addEventListener('input', (e) => {
+    document.getElementById('comment-input').placeholder = e.target.value || 'Comment something...';
   });
 
   // ---------- Theme templates (creator only, saved via persistent storage) ----------
