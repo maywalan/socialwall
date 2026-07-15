@@ -46,13 +46,14 @@
   #header{
     position:absolute; top:0; left:0; right:0;
     padding:36px 48px 24px 48px;
-    display:flex; flex-direction:column; gap:14px;
+    display:flex; flex-direction:column; align-items:center; text-align:center;
+    gap:14px;
     z-index:20;
     pointer-events:none;
   }
 
   #eyebrow{
-    display:flex; align-items:center; gap:10px;
+    display:flex; align-items:center; justify-content:center; gap:10px;
     font-family:'Prompt',sans-serif;
     font-size:12px; letter-spacing:.14em; text-transform:uppercase;
     color:var(--font-color); opacity:.7;
@@ -76,6 +77,7 @@
     font-size:clamp(22px, 7vw, var(--question-size));
     line-height:1.15;
     max-width:78%;
+    margin:0 auto;
     color:var(--question-color);
     text-wrap:balance;
     transition:color .3s ease, font-size .2s ease;
@@ -622,7 +624,7 @@
 
     const tag = document.createElement('span');
     tag.className = 'tag';
-    tag.textContent = 'Attendee · just now';
+    tag.textContent = 'Just now';
     const body = document.createElement('div');
     body.textContent = text;
     const removeBtn = document.createElement('button');
@@ -648,13 +650,12 @@
     const leftPct = (lane + 0.5) * laneWidthPct + (Math.random() * 4 - 2);
     const drift = (Math.random() * 60 - 30).toFixed(0) + 'px';
     const rot = (Math.random() * 8 - 4).toFixed(1) + 'deg';
-    const delay = -(Math.random() * duration).toFixed(2); // negative delay = starts mid-loop, avoids stacked spawns
 
     b.style.left = leftPct + '%';
     b.style.setProperty('--drift', drift);
     b.style.setProperty('--rot', rot);
     b.style.animationDuration = duration + 's';
-    b.style.animationDelay = delay + 's';
+    b.style.animationDelay = '0s'; // always start the rise from the bottom, never mid-loop
 
     makeDraggable(b);
 
