@@ -50,6 +50,11 @@
     gap:14px;
     z-index:20;
     pointer-events:none;
+    transition:padding-top .2s ease;
+  }
+
+  body.is-fullscreen #header{
+    padding-top:72px;
   }
 
   #eyebrow{
@@ -143,16 +148,6 @@
     display:flex;
   }
 
-  .bubble .tag{
-    display:block;
-    font-family:'Prompt',sans-serif;
-    font-size:0.65em;
-    letter-spacing:.08em;
-    text-transform:uppercase;
-    opacity:.55;
-    margin-bottom:0.35em;
-  }
-
   @keyframes rise{
     0%{ transform:translateY(0) translateX(-50%) rotate(0deg); opacity:0; }
     6%{ opacity:1; }
@@ -163,10 +158,10 @@
 
   /* ---------- QR panel ---------- */
   #qr-panel{
-    position:absolute; bottom:104px; right:32px;
-    display:flex; align-items:center; gap:16px;
-    padding:16px 20px;
-    border-radius:20px;
+    position:absolute; top:28px; right:32px;
+    display:flex; flex-direction:column; align-items:center; gap:12px;
+    padding:18px 20px;
+    border-radius:22px;
     background:var(--card);
     border:1px solid color-mix(in srgb, var(--font-color) 14%, transparent);
     backdrop-filter:blur(8px);
@@ -175,16 +170,16 @@
 
   #qr-ring{
     position:relative;
-    width:96px; height:96px;
-    border-radius:14px;
+    width:150px; height:150px;
+    border-radius:16px;
     background:#fff;
-    padding:8px;
+    padding:10px;
     display:flex; align-items:center; justify-content:center;
   }
   #qr-ring::after{
     content:'';
     position:absolute; inset:-6px;
-    border-radius:18px;
+    border-radius:20px;
     border:2px solid var(--accent);
     animation:ring-pulse 2.2s ease-in-out infinite;
   }
@@ -193,13 +188,13 @@
     50%{ opacity:.9; transform:scale(1.04); }
   }
 
-  #qr-text{ font-family:'Prompt',sans-serif; }
+  #qr-text{ font-family:'Prompt',sans-serif; text-align:center; }
   #qr-text .title{ font-weight:600; font-size:14px; color:var(--font-color); }
   #qr-text .sub{ font-size:12px; opacity:.6; color:var(--font-color); margin-top:2px; }
 
   /* ---------- Settings ---------- */
   #gear{
-    position:absolute; top:28px; right:32px; z-index:30;
+    position:absolute; top:28px; left:32px; z-index:30;
     width:44px; height:44px; border-radius:12px;
     background:var(--card); border:1px solid color-mix(in srgb, var(--font-color) 14%, transparent);
     color:var(--font-color);
@@ -227,6 +222,14 @@
     font-family:'Prompt',sans-serif;
     margin:0 0 20px 0; font-size:20px;
   }
+
+  .fullscreen-toggle{
+    width:100%; padding:11px; border:none; border-radius:8px;
+    background:var(--accent); color:#fff; font-weight:600; cursor:pointer;
+    font-family:'Prompt',sans-serif; font-size:14px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .fullscreen-toggle:hover{ opacity:.92; }
 
   .field{ margin-bottom:20px; }
   .field label{
@@ -362,17 +365,20 @@
       padding:64px 16px 12px 16px;
       gap:8px;
     }
+    body.is-fullscreen #header{
+      padding-top:88px;
+    }
     #question{ max-width:100%; font-size:clamp(20px, 6.5vw, var(--question-size)); }
     #eyebrow{ font-size:10px; }
     #counter{ font-size:11px; }
 
-    #gear{ top:14px; right:14px; width:38px; height:38px; font-size:15px; border-radius:10px; }
+    #gear{ top:14px; left:14px; width:38px; height:38px; font-size:15px; border-radius:10px; }
 
     /* Scanning a QR on the phone you're already holding doesn't make sense — hide it on mobile */
     #qr-panel{ display:none; }
 
     #share-btn{
-      position:absolute; top:14px; left:14px; bottom:auto;
+      position:absolute; top:14px; right:14px; bottom:auto; left:auto;
       padding:9px 14px; font-size:12px; border-radius:10px; gap:6px;
     }
 
@@ -402,7 +408,7 @@
   <div id="qr-panel">
     <div id="qr-ring"><div id="qrcode"></div></div>
     <div id="qr-text">
-      <div class="title">Scan to join</div>
+      <div class="title">สแกนเพื่อส่งข้อความ</div>
       <div class="sub">Answer live from your phone</div>
     </div>
   </div>
@@ -419,6 +425,10 @@
   <div id="panel">
     <button id="close-panel">✕</button>
     <h3>Customize</h3>
+
+    <div class="field">
+      <button id="fullscreen-btn" class="fullscreen-toggle">⛶ Full screen</button>
+    </div>
 
     <div class="field" id="role-field">
       <label>Viewing as</label>
@@ -622,9 +632,6 @@
     b.dataset.id = id;
     b.dataset.words = text.trim().split(/\s+/).filter(Boolean).length || 1;
 
-    const tag = document.createElement('span');
-    tag.className = 'tag';
-    tag.textContent = 'Just now';
     const body = document.createElement('div');
     body.textContent = text;
     const removeBtn = document.createElement('button');
@@ -638,7 +645,6 @@
       b.remove();
       removeCommentEverywhere(id);
     });
-    b.appendChild(tag);
     b.appendChild(body);
     b.appendChild(removeBtn);
 
@@ -752,8 +758,8 @@
   // ---------- QR code ----------
   let qr = new QRCode(document.getElementById('qrcode'), {
     text: 'https://maywalan.github.io/socialwall/?role=commentor',
-    width: 80,
-    height: 80,
+    width: 130,
+    height: 130,
     colorDark: '#1a1a1a',
     colorLight: '#ffffff'
   });
@@ -762,8 +768,8 @@
     document.getElementById('qrcode').innerHTML = '';
     qr = new QRCode(document.getElementById('qrcode'), {
       text: e.target.value || 'https://maywalan.github.io/socialwall/?role=commentor',
-      width: 80,
-      height: 80,
+      width: 130,
+      height: 130,
       colorDark: '#1a1a1a',
       colorLight: '#ffffff'
     });
@@ -822,6 +828,27 @@
   const panel = document.getElementById('panel');
   document.getElementById('gear').addEventListener('click', () => panel.classList.add('open'));
   document.getElementById('close-panel').addEventListener('click', () => panel.classList.remove('open'));
+
+  // ---------- Full screen ----------
+  const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+  function updateFullscreenUI(){
+    const isFs = !!document.fullscreenElement;
+    document.body.classList.toggle('is-fullscreen', isFs);
+    fullscreenBtn.textContent = isFs ? '⛶ Exit full screen' : '⛶ Full screen';
+  }
+
+  fullscreenBtn.addEventListener('click', () => {
+    if(!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(() => {
+        console.warn('Full screen request was blocked or unsupported.');
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  });
+
+  document.addEventListener('fullscreenchange', updateFullscreenUI);
 
   let questionSaveTimer = null;
   document.getElementById('input-question').addEventListener('input', (e) => {
