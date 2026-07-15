@@ -612,9 +612,19 @@
   function applyBubbleSizing(b){
     const basePx = currentBaseFontPx();
     const fontPx = fontSizeForText(b.dataset.text, basePx);
-    const cappedFontPx = Math.min(fontPx, window.innerWidth * 0.16);
-    const maxWidthPx = Math.min(Math.round(cappedFontPx * currentScale()), window.innerWidth * 0.86);
-    b.style.fontSize = Math.round(cappedFontPx) + 'px';
+
+    const isMobile = window.innerWidth <= 640;
+    const mobileFontFactor = isMobile ? 0.68 : 1;   // shrink text itself on phones
+    const mobileScaleFactor = isMobile ? 0.8 : 1;    // shrink the bubble box further on top of that
+
+    const scaledFontPx = fontPx * mobileFontFactor;
+    const fontCapRatio = isMobile ? 0.1 : 0.16;
+    const widthCapRatio = isMobile ? 0.62 : 0.86;
+
+    const cappedFontPx = Math.min(scaledFontPx, window.innerWidth * fontCapRatio);
+    const maxWidthPx = Math.min(Math.round(cappedFontPx * currentScale() * mobileScaleFactor), window.innerWidth * widthCapRatio);
+
+    b.style.fontSize = Math.max(9, Math.round(cappedFontPx)) + 'px';
     b.style.maxWidth = Math.round(maxWidthPx) + 'px';
   }
 
