@@ -280,6 +280,14 @@
   }
   .btn-row button.danger{ background:#7a2b26; color:#fff; }
 
+  #export-box{ border-top:1px solid rgba(255,255,255,.08); padding-top:20px; }
+  .export-full{
+    width:100%; padding:11px; border:none; border-radius:8px;
+    background:#2c3040; color:#F5F1EA; font-weight:600; cursor:pointer;
+    font-family:'Prompt',sans-serif; font-size:13px;
+  }
+  .export-full:hover{ background:#383d52; }
+
   #clear-box{ border-top:1px solid rgba(255,255,255,.08); padding-top:20px; }
   .danger-full{
     width:100%; padding:11px; border:none; border-radius:8px;
@@ -507,6 +515,12 @@
 
       <p id="template-status"></p>
       <p>Saves background, font colors, question size, and bubble styling. Templates are shared with anyone using this wall.</p>
+    </div>
+
+    <div id="export-box" class="field creator-only">
+      <label>Export data</label>
+      <button id="export-comments-btn" class="export-full">⬇ Export comments (CSV)</button>
+      <p style="font-size:11px; opacity:.55; line-height:1.5; margin-top:8px;">Downloads every comment currently on the wall as a CSV file.</p>
     </div>
 
     <div id="clear-box" class="field creator-only">
@@ -1059,6 +1073,63 @@
   document.getElementById('input-comment-placeholder').addEventListener('input', (e) => {
     document.getElementById('comment-input').placeholder = e.target.value || 'Comment something...';
   });
+
+  // ---------- Export comments as CSV (creator only) ----------
+  function csvEscape(value){
+    const s = String(value ?? '');
+    if(/[",\n]/.test(s)){
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  async function exportCommentsCSV(){
+    let rows = [];
+
+    if(sb){
+      const { data, error } = await sb
+        .from('comments')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if(error){
+        logSbError('Could not export comments', error);
+      } else if(data){
+        rows = data.map(c => ({ id: c.id, text: c.text, created_at: c.created_at }));
+      }
+    }
+
+    // Fallback: if there's no Supabase connection, export whatever is currently on screen
+    if(rows.length === 0){
+      document.querySelectorAll('.bubble').forEach(b => {
+        rows.push({ id: b.dataset.id || '', text: b.dataset.text || '', created_at: '' });
+      });
+    }
+
+    if(rows.length === 0){
+      alert('There are no comments to export yet.');
+      return;
+    }
+
+    const header = ['id', 'text', 'created_at'];
+    const lines = [header.join(',')];
+    rows.forEach(r => {
+      lines.push([csvEscape(r.id), csvEscape(r.text), csvEscape(r.created_at)].join(','));
+    });
+    const csvContent = '\uFEFF' + lines.join('\r\n'); // BOM so Excel reads UTF-8 (Thai, etc.) correctly
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = 'comments-export-' + stamp + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('export-comments-btn').addEventListener('click', exportCommentsCSV);
 
   // ---------- Clear all comments (creator only, with confirmation) ----------
   document.getElementById('clear-comments-btn').addEventListener('click', async () => {
